@@ -97,17 +97,6 @@
     pointer-events: none;
   }
   [hidden] { display: none !important; }
-  .gate {
-    position: fixed;
-    inset: 0;
-    z-index: 5;
-    display: grid;
-    place-items: center;
-    background: rgba(0, 0, 0, 0.6);
-    padding-left: max(16px, env(safe-area-inset-left, 0px));
-    padding-right: max(16px, env(safe-area-inset-right, 0px));
-  }
-  .gate button { font-size: 16px; padding: 12px 22px; }
 </style>
 
 <div class="term">
@@ -127,9 +116,6 @@
           src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A500269605&amp;color=%23ff5fa8&amp;auto_play=false&amp;hide_related=true&amp;show_comments=false&amp;show_user=false&amp;show_reposts=false&amp;show_teaser=false&amp;show_artwork=false&amp;visual=false"></iframe>
 </div>
 <script src="https://w.soundcloud.com/player/api.js"></script>
-<div class="gate" id="gate">
-  <button id="open" type="button">Open your flowers</button>
-</div>
 
 <script>
 const META = __META__;
@@ -209,16 +195,22 @@ window.addEventListener('resize', () => { layout(); if (frameIdx >= 0) draw(fram
 
 // ---- Music -----------------------------------------------------------------
 // An invisible embedded player streams the song; the page drives it through
-// the player's Widget API. Phones only allow sound after a tap, so music
-// starts from "Open your flowers".
+// the player's Widget API. It tries to start as soon as it is ready; where
+// the browser holds sound back until the visitor interacts (most phones, and
+// desktop browsers on a first visit), it starts on the first tap, click or
+// key press anywhere on the page.
 const scFrame = document.getElementById('sc');
-const gate = document.getElementById('gate');
-const openBtn = document.getElementById('open');
-let widget = null, scReady = false, wantPlay = false;
+let widget = null, scReady = false, wantPlay = true, scPlaying = false;
 
 function setPlaying(on) {
+  scPlaying = on;
   document.body.dataset.music = on ? 'playing' : (scReady ? 'ready' : 'loading');
+  if (on) stopWaitingForTap();
 }
+const TAP_EVENTS = ['pointerdown', 'touchend', 'keydown'];
+function onFirstTap() { if (!scPlaying) playSong(); }
+function waitForTap() { TAP_EVENTS.forEach(e => window.addEventListener(e, onFirstTap, { capture: true })); }
+function stopWaitingForTap() { TAP_EVENTS.forEach(e => window.removeEventListener(e, onFirstTap, { capture: true })); }
 function playSong() {
   wantPlay = true;
   if (scReady) widget.play();               // otherwise starts once ready
@@ -235,23 +227,18 @@ function initPlayer() {
     setPlaying(false);
     if (wantPlay) playSong();
   });
-  widget.bind(E.PLAY, () => setPlaying(true));
-  widget.bind(E.PAUSE, () => setPlaying(false));
+  // A blocked autoplay reports PLAY and then PAUSE at once, so only count
+  // the song as playing once it is actually moving, and keep listening for
+  // the first tap until then.
+  widget.bind(E.PLAY_PROGRESS, () => { if (!scPlaying) setPlaying(true); });
+  widget.bind(E.PAUSE, () => { setPlaying(false); waitForTap(); });
   widget.bind(E.FINISH, () => { widget.seekTo(0); widget.play(); });   // keep it going
   widget.bind(E.ERROR, musicUnavailable);
   setTimeout(() => { if (!scReady) musicUnavailable(); }, 12000);
 }
 document.body.dataset.music = 'loading';
+waitForTap();
 initPlayer();
-
-// "Open your flowers": starts the bloom from the bud and the song together.
-openBtn.addEventListener('click', () => {
-  gate.hidden = true;
-  t0 = performance.now(); offset = 0; frameIdx = -1;
-  playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (!playing) draw(0);
-  playSong();
-});
 
 (async () => {
   layout(); draw(0);
@@ -263,7 +250,8 @@ openBtn.addEventListener('click', () => {
     return;
   }
   layout(); draw(0);
-  openBtn.focus();
+  t0 = performance.now(); offset = 0; frameIdx = -1;
+  playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   requestAnimationFrame(tick);
 })();
 </script>
