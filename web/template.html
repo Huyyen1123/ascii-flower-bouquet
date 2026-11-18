@@ -1,0 +1,259 @@
+<title>ASCII Flower Bouquet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+  /* One terminal window, centred on pure black: the bouquet is the whole page. */
+  :root {
+    --bg: #000000;          /* same black the renderer paints behind every cell */
+    --panel: #0c0c0e;
+    --line: #26262c;
+    --fg: #e6e6ea;
+    --muted: #8d8d98;
+    --accent: #ff5fa8;      /* the ribbon pink */
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding-block: 20px 28px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    box-sizing: border-box;
+  }
+  .term {
+    width: min(100%, 880px);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); display: block; }
+  .bar .name { flex: 1; text-align: center; letter-spacing: 0.02em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  canvas { display: block; width: 100%; height: auto; }
+  .controls {
+    width: min(100%, 880px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  button {
+    font: 600 13px var(--mono);
+    color: var(--bg);
+    background: var(--accent);
+    border: 0;
+    border-radius: 6px;
+    padding: 7px 14px;
+    cursor: pointer;
+  }
+  .btns { display: flex; gap: 8px; }
+  button.ghost { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  code { color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; }
+  #status { min-height: 1em; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .player {
+    width: min(100%, 880px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .songname { flex-basis: 100%; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .time { font-variant-numeric: tabular-nums; min-width: 3.4em; text-align: center; }
+  #seek { flex: 1 1 160px; min-width: 0; accent-color: var(--accent); cursor: pointer; }
+  #seek:disabled { cursor: default; }
+</style>
+
+<div class="term">
+  <div class="bar">
+    <span class="dots"><i></i><i></i><i></i></span>
+    <span class="name">python3 main.py — 150×78</span>
+    <span style="width:42px"></span>
+  </div>
+  <canvas id="screen" width="880" height="920" aria-label="A rotating bouquet of flowers drawn in coloured ASCII characters"></canvas>
+</div>
+<div class="controls">
+  <span class="btns"><button id="toggle" type="button">Pause</button>
+  <button id="replay" type="button" class="ghost">Replay bloom</button></span>
+  <span id="status"></span>
+</div>
+<div class="player" aria-label="Music">
+  <span class="songname" id="songname">Lorde · Ribs</span>
+  <button id="songplay" type="button">Play song</button>
+  <span class="time" id="cur">0:00</span>
+  <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="Song position">
+  <span class="time" id="dur">0:00</span>
+</div>
+<audio id="audio" preload="auto" src="ribs.mp3"></audio>
+
+<script>
+const META = __META__;
+const BLOB = "__BLOB__";
+
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
+const btn = document.getElementById('toggle');
+const status = document.getElementById('status');
+const { w: W, h: H, n: N, period: PERIOD, chars: CHARS, palette } = META;
+const COLORS = [null, ...palette];
+const BG = '#000000';
+const replay = document.getElementById('replay');
+// The first NI frames are the bloom (played once, INTRO seconds long); the
+// N frames after them loop forever.
+const INTRO = META.intro, NI = META.ni;
+let frames = null, playing = true, frameIdx = -1, t0 = performance.now(), offset = 0;
+function indexAt(elapsed) {
+  if (elapsed < INTRO) return Math.min(NI - 1, Math.floor(elapsed / INTRO * NI));
+  return NI + Math.floor(((elapsed - INTRO) % PERIOD) / PERIOD * N) % N;
+}
+let cw = 0, chh = 0, fs = 0;
+
+function layout() {
+  const cssW = canvas.parentElement.clientWidth;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cw = cssW / W;                 // a cell is half as wide as it is tall
+  chh = cw * 2.05;
+  fs = cw / 0.6;
+  canvas.style.height = (chh * H) + 'px';
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(chh * H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.font = `700 ${fs}px "JetBrains Mono", ui-monospace, Menlo, monospace`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+}
+
+function draw(i) {
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, cw * W, chh * H);
+  if (!frames) return;
+  const base = i * W * H;
+  let last = -1;
+  for (let y = 0; y < H; y++) {
+    const cy = (y + 0.5) * chh;
+    for (let x = 0; x < W; x++) {
+      const v = frames[base + y * W + x];
+      if (!v) continue;
+      const c = v >> 4;
+      if (c !== last) { ctx.fillStyle = COLORS[c]; last = c; }
+      ctx.fillText(CHARS[v & 15], (x + 0.5) * cw, cy);
+    }
+  }
+}
+
+function tick(now) {
+  if (playing) {
+    const i = indexAt((now - t0) / 1000 + offset);
+    if (i !== frameIdx) { frameIdx = i; draw(i); }
+  }
+  requestAnimationFrame(tick);
+}
+
+async function decode() {
+  const bin = Uint8Array.from(atob(BLOB), ch => ch.charCodeAt(0));
+  const stream = new Blob([bin]).stream().pipeThrough(new DecompressionStream('deflate'));
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint16Array(buf);
+}
+
+btn.addEventListener('click', () => {
+  if (playing) { offset = (performance.now() - t0) / 1000 + offset; playing = false; btn.textContent = 'Play'; }
+  else { t0 = performance.now(); playing = true; btn.textContent = 'Pause'; }
+});
+replay.addEventListener('click', () => {
+  t0 = performance.now(); offset = 0; frameIdx = -1;
+  playing = true; btn.textContent = 'Pause';
+});
+window.addEventListener('resize', () => { layout(); if (frameIdx >= 0) draw(frameIdx); });
+
+// ---- Music: plays the song next to this file, starting 1 s after load ----
+const audio = document.getElementById('audio');
+const songBtn = document.getElementById('songplay');
+const seek = document.getElementById('seek');
+const cur = document.getElementById('cur');
+const dur = document.getElementById('dur');
+const player = document.querySelector('.player');
+let seeking = false;
+
+const fmt = s => {
+  if (!isFinite(s)) return '0:00';
+  s = Math.max(0, Math.floor(s));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+};
+songBtn.addEventListener('click', () => {
+  if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+});
+audio.addEventListener('play', () => { songBtn.textContent = 'Pause song'; status.textContent = ''; });
+audio.addEventListener('pause', () => { songBtn.textContent = 'Play song'; });
+audio.addEventListener('loadedmetadata', () => {
+  seek.max = audio.duration;
+  dur.textContent = fmt(audio.duration);
+});
+audio.addEventListener('timeupdate', () => {
+  if (!seeking) seek.value = audio.currentTime;
+  cur.textContent = fmt(seeking ? +seek.value : audio.currentTime);
+});
+seek.addEventListener('input', () => { seeking = true; cur.textContent = fmt(+seek.value); });
+seek.addEventListener('change', () => { audio.currentTime = +seek.value; seeking = false; });
+audio.addEventListener('error', () => {
+  status.textContent = 'Song not found: put ribs.mp3 next to this page.';
+});
+
+// Start the song one second after the page opens. Browsers may block sound
+// until the first click or key press; if so, the first one starts it.
+setTimeout(() => {
+  audio.play().catch(() => {
+    status.textContent = 'Click anywhere to start the music';
+    const start = e => {
+      if (e && e.target && player.contains(e.target)) return;   // controls handle themselves
+      audio.play().catch(() => {});
+      window.removeEventListener('pointerdown', start);
+      window.removeEventListener('keydown', start);
+    };
+    window.addEventListener('pointerdown', start);
+    window.addEventListener('keydown', start);
+  });
+}, 1000);
+
+(async () => {
+  layout(); draw(0);
+  try { await document.fonts.load(`700 16px "JetBrains Mono"`); } catch (e) {}
+  try {
+    frames = await decode();
+  } catch (e) {
+    status.textContent = 'This browser could not unpack the animation. Try a current Chrome, Safari or Firefox.';
+    return;
+  }
+  layout(); draw(0);
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    playing = false; btn.textContent = 'Play';
+  }
+  t0 = performance.now(); offset = 0;
+  requestAnimationFrame(tick);
+})();
+</script>
