@@ -3,16 +3,15 @@
 
 Writes web/index.html: the bloom plays once (18 s), then a seamless 15 s loop
 (rotation, sway and falling petals all repeat exactly). Tapping "Open your
-flowers" starts the bloom and the song at audio/song.mp3 (next to the page),
-which fades in over 2 s and loops, with play/pause and a seek bar.
+flowers" starts the bloom and "Ribs" by Lorde through SoundCloud's embedded
+player (streamed by SoundCloud, nothing rehosted).
 
-Local page:   python3 export_web.py --song-title "Artist · Song"; open web/index.html
-Public site:  python3 export_web.py --out docs/index.html  (song: docs/audio/song.mp3)
+Local page:   python3 export_web.py; open web/index.html
+Public site:  python3 export_web.py --out docs/index.html
 """
 
 import argparse
 import base64
-import html
 import json
 import os
 import zlib
@@ -33,8 +32,6 @@ def main():
     ap = argparse.ArgumentParser(description='Render the bouquet into a web page.')
     ap.add_argument('--out', default=os.path.join(HERE, 'web', 'index.html'),
                     help='where to write the page (default: web/index.html)')
-    ap.add_argument('--song-title', default='',
-                    help='name shown above the music player (default: none)')
     args = ap.parse_args()
     b = bouquet.build()
     r = renderer.Renderer(b, period=P, petals=petals.PetalSystem(b.anchors, period=P, loop=True))
@@ -57,9 +54,7 @@ def main():
     meta = {'w': W, 'h': H, 'n': N, 'period': P, 'intro': INTRO, 'ni': NI,
             'chars': CHARS, 'palette': palette}
     tpl = open(os.path.join(HERE, 'web', 'template.html')).read()
-    title = html.escape(args.song_title)
-    body = (tpl.replace('__SONG_TITLE__', title)
-            .replace('__META__', json.dumps(meta)).replace('__BLOB__', blob))
+    body = tpl.replace('__META__', json.dumps(meta)).replace('__BLOB__', blob)
     page = ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8">\n'
             '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
             '<style>body{margin:0;font:14px system-ui,sans-serif}</style>\n'

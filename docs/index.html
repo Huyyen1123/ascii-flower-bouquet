@@ -88,12 +88,20 @@
     font-size: 13px;
     color: var(--muted);
   }
-  .songname { flex-basis: 100%; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .time { font-variant-numeric: tabular-nums; min-width: 3.4em; text-align: center; }
-  #seek { flex: 1 1 160px; min-width: 0; accent-color: var(--accent); cursor: pointer; }
-  #seek:disabled { cursor: default; }
+  .songname { color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0.02em; }
+  .songmsg a { color: var(--accent); }
+  /* SoundCloud's compact (20 px) player, inverted so it sits dark on black. */
+  .sc {
+    flex-basis: 100%;
+    width: 100%;
+    height: 20px;
+    border: 0;
+    border-radius: 4px;
+    filter: invert(1) hue-rotate(180deg);
+    opacity: 0.85;
+  }
   [hidden] { display: none !important; }
-  .songmsg { flex-basis: 100%; color: var(--accent); }
+  .songmsg { flex-basis: 100%; color: var(--muted); }
   .gate {
     position: fixed;
     inset: 0;
@@ -121,14 +129,13 @@
   <span id="status"></span>
 </div>
 <div class="player" aria-label="Music">
-  <span class="songname" id="songname"></span>
+  <span class="songname">Ribs — Lorde</span>
+  <button id="songplay" type="button" aria-pressed="false">Play our song ♡</button>
   <span class="songmsg" id="songmsg" role="status" hidden></span>
-  <button id="songplay" type="button">Play song</button>
-  <span class="time" id="cur">0:00</span>
-  <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="Song position">
-  <span class="time" id="dur">--:--</span>
+  <iframe id="sc" class="sc" title="Ribs by Lorde on SoundCloud" allow="autoplay; encrypted-media"
+          src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A500269605&amp;color=%23ff5fa8&amp;auto_play=false&amp;hide_related=true&amp;show_comments=false&amp;show_user=false&amp;show_reposts=false&amp;show_teaser=false&amp;show_artwork=false&amp;visual=false"></iframe>
 </div>
-<audio id="audio" preload="metadata" loop playsinline src="audio/song.mp3"></audio>
+<script src="https://w.soundcloud.com/player/api.js"></script>
 <div class="gate" id="gate">
   <button id="open" type="button">Open your flowers</button>
 </div>
@@ -214,114 +221,82 @@ replay.addEventListener('click', () => {
 });
 window.addEventListener('resize', () => { layout(); if (frameIdx >= 0) draw(frameIdx); });
 
-// ---- Music ------------------------------------------------------------------
-// The song lives at audio/song.mp3 next to this page. It starts when the
-// viewer taps "Open your flowers" or "Play song" (a tap is what lets phones
-// play sound), fades in over 2 s and loops.
-const audio = document.getElementById('audio');
+// ---- Music: "Ribs" by Lorde, streamed by SoundCloud's embedded player -------
+// Nothing is downloaded or rehosted: the page drives SoundCloud's own player
+// through its Widget API. Phones only allow sound after a tap, so music
+// starts from "Open your flowers" or "Play our song"; if the browser still
+// blocks it, the visitor gets SoundCloud's own play button and a link.
+const TRACK_PAGE = 'https://soundcloud.com/user-881998659/ribs-lorde-audiotrimmercom';
 const songBtn = document.getElementById('songplay');
-const seek = document.getElementById('seek');
-const cur = document.getElementById('cur');
-const dur = document.getElementById('dur');
-const songName = document.getElementById('songname');
 const songMsg = document.getElementById('songmsg');
+const scFrame = document.getElementById('sc');
 const gate = document.getElementById('gate');
 const openBtn = document.getElementById('open');
-const FADE_S = 2;
-let seeking = false, songOk = null, actx = null, gain = null;
-if (!songName.textContent.trim()) songName.hidden = true;
+let widget = null, scReady = false, scPlaying = false, wantPlay = false, startTimer = 0;
 
-const fmt = s => {
-  if (!isFinite(s)) return '--:--';
-  s = Math.max(0, Math.floor(s));
-  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-};
-function say(msg) { songMsg.textContent = msg; songMsg.hidden = !msg; }
-function songUnavailable() {
-  songOk = false;
-  audio.pause();
-  songBtn.disabled = true;
-  seek.disabled = true;
-  cur.textContent = '--:--';
-  dur.textContent = '--:--';
-  say("The song couldn't be loaded, so the flowers are playing without music.");
-}
-audio.addEventListener('error', songUnavailable);
-// Phones often skip preloading, so ask the server directly whether the file
-// is there instead of waiting for a play attempt to fail.
-if (location.protocol.startsWith('http')) {
-  fetch(audio.currentSrc || audio.src, { method: 'HEAD', cache: 'no-store' })
-    .then(r => { if (!r.ok) songUnavailable(); })
-    .catch(() => {});
-}
-
-// 2 s fade-in. iPhone Safari ignores audio.volume, so over http(s) the fade
-// runs through Web Audio; opened from a file it falls back to the volume.
-const AC = window.AudioContext || window.webkitAudioContext;
-const useWebAudio = !!AC && location.protocol.startsWith('http');
-function fadeIn() {
-  if (useWebAudio) {
-    try {
-      if (!actx) {
-        actx = new AC();
-        gain = actx.createGain();
-        actx.createMediaElementSource(audio).connect(gain).connect(actx.destination);
-      }
-      actx.resume();
-      const now = actx.currentTime;
-      gain.gain.cancelScheduledValues(now);
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.linearRampToValueAtTime(1, now + FADE_S);
-      return;
-    } catch (e) { /* fall through to the volume fade */ }
+function tellUser(text, withLink) {
+  songMsg.replaceChildren(document.createTextNode(text));
+  if (withLink) {
+    const a = document.createElement('a');
+    a.href = TRACK_PAGE; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = 'Listen on SoundCloud';
+    songMsg.append(' ', a);
   }
-  audio.volume = 0;
-  const start = performance.now();
-  const step = now => {
-    const k = Math.min(1, (now - start) / (FADE_S * 1000));
-    audio.volume = k;
-    if (k < 1 && !audio.paused) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
+  songMsg.hidden = false;
 }
-// Must run inside a tap/click so every browser allows the sound.
-function startSong() {
-  if (songOk === false) return;
-  fadeIn();
-  const p = audio.play();
-  if (p && p.catch) p.catch(err => {
-    if (songOk === false) return;
-    if (err && err.name === 'NotAllowedError') say('Tap "Play song" to start the music.');
-    else songUnavailable();
+function setPlaying(on) {
+  scPlaying = on;
+  songBtn.textContent = on ? 'Pause our song' : 'Play our song ♡';
+  songBtn.setAttribute('aria-pressed', String(on));
+  document.body.dataset.music = on ? 'playing' : (scReady ? 'ready' : 'loading');
+}
+function playSong() {
+  wantPlay = true;
+  if (!scReady) return;                     // starts as soon as the player is ready
+  widget.play();
+  clearTimeout(startTimer);
+  startTimer = setTimeout(() => {
+    if (!scPlaying) tellUser('Your browser held the music back. Tap ▶ in the SoundCloud player above, or', true);
+  }, 3000);
+}
+function initSoundCloud() {
+  if (!window.SC || !SC.Widget) {
+    tellUser("The SoundCloud player couldn't load.", true);
+    document.body.dataset.music = 'unavailable';
+    return;
+  }
+  widget = SC.Widget(scFrame);
+  const E = SC.Widget.Events;
+  widget.bind(E.READY, () => {
+    scReady = true;
+    setPlaying(false);
+    if (wantPlay) playSong();
   });
+  widget.bind(E.PLAY, () => { clearTimeout(startTimer); songMsg.hidden = true; setPlaying(true); });
+  widget.bind(E.PAUSE, () => setPlaying(false));
+  widget.bind(E.FINISH, () => { widget.seekTo(0); widget.play(); });   // keep it going
+  widget.bind(E.ERROR, () => tellUser("SoundCloud couldn't play the song here.", true));
+  setTimeout(() => {
+    if (!scReady) {
+      tellUser("The SoundCloud player didn't load.", true);
+      document.body.dataset.music = 'unavailable';
+    }
+  }, 12000);
 }
+songBtn.addEventListener('click', () => {
+  if (scPlaying) { wantPlay = false; widget.pause(); } else playSong();
+});
+document.body.dataset.music = 'loading';
+initSoundCloud();
 
-songBtn.addEventListener('click', () => { if (audio.paused) startSong(); else audio.pause(); });
-audio.addEventListener('play', () => { songBtn.textContent = 'Pause song'; if (songOk !== false) say(''); });
-audio.addEventListener('pause', () => { songBtn.textContent = 'Play song'; });
-audio.addEventListener('loadedmetadata', () => {
-  songOk = true;
-  seek.max = audio.duration;
-  dur.textContent = fmt(audio.duration);
-});
-audio.addEventListener('timeupdate', () => {
-  if (!seeking) seek.value = audio.currentTime;
-  cur.textContent = fmt(seeking ? +seek.value : audio.currentTime);
-});
-seek.addEventListener('input', () => { seeking = true; cur.textContent = fmt(+seek.value); });
-seek.addEventListener('change', () => {
-  if (isFinite(audio.duration)) audio.currentTime = +seek.value;
-  seeking = false;
-});
-
-// "Open your flowers": starts the bloom from the bud and the music together.
+// "Open your flowers": starts the bloom from the bud and the song together.
 openBtn.addEventListener('click', () => {
   gate.hidden = true;
   t0 = performance.now(); offset = 0; frameIdx = -1;
   playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   btn.textContent = playing ? 'Pause' : 'Play';
   if (!playing) draw(0);
-  startSong();
+  playSong();
 });
 
 (async () => {
