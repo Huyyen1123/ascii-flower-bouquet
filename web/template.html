@@ -83,20 +83,18 @@
     font-size: 13px;
     color: var(--muted);
   }
-  .songname { color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0.02em; }
-  .songmsg a { color: var(--accent); }
-  /* SoundCloud's compact (20 px) player, inverted so it sits dark on black. */
+  /* The music player runs invisibly; only the button shows. */
   .sc {
-    flex-basis: 100%;
-    width: 100%;
-    height: 20px;
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
     border: 0;
-    border-radius: 4px;
-    filter: invert(1) hue-rotate(180deg);
-    opacity: 0.85;
+    opacity: 0;
+    pointer-events: none;
   }
   [hidden] { display: none !important; }
-  .songmsg { flex-basis: 100%; color: var(--muted); }
   .gate {
     position: fixed;
     inset: 0;
@@ -124,10 +122,8 @@
   <span id="status"></span>
 </div>
 <div class="player" aria-label="Music">
-  <span class="songname">Ribs — Lorde</span>
   <button id="songplay" type="button" aria-pressed="false">Play our song ♡</button>
-  <span class="songmsg" id="songmsg" role="status" hidden></span>
-  <iframe id="sc" class="sc" title="Ribs by Lorde on SoundCloud" allow="autoplay; encrypted-media"
+  <iframe id="sc" class="sc" title="Background music" aria-hidden="true" tabindex="-1" allow="autoplay; encrypted-media"
           src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A500269605&amp;color=%23ff5fa8&amp;auto_play=false&amp;hide_related=true&amp;show_comments=false&amp;show_user=false&amp;show_reposts=false&amp;show_teaser=false&amp;show_artwork=false&amp;visual=false"></iframe>
 </div>
 <script src="https://w.soundcloud.com/player/api.js"></script>
@@ -216,29 +212,16 @@ replay.addEventListener('click', () => {
 });
 window.addEventListener('resize', () => { layout(); if (frameIdx >= 0) draw(frameIdx); });
 
-// ---- Music: "Ribs" by Lorde, streamed by SoundCloud's embedded player -------
-// Nothing is downloaded or rehosted: the page drives SoundCloud's own player
-// through its Widget API. Phones only allow sound after a tap, so music
-// starts from "Open your flowers" or "Play our song"; if the browser still
-// blocks it, the visitor gets SoundCloud's own play button and a link.
-const TRACK_PAGE = 'https://soundcloud.com/user-881998659/ribs-lorde-audiotrimmercom';
+// ---- Music -----------------------------------------------------------------
+// An invisible embedded player streams the song; the page drives it through
+// the player's Widget API. Phones only allow sound after a tap, so music
+// starts from "Open your flowers" or "Play our song".
 const songBtn = document.getElementById('songplay');
-const songMsg = document.getElementById('songmsg');
 const scFrame = document.getElementById('sc');
 const gate = document.getElementById('gate');
 const openBtn = document.getElementById('open');
-let widget = null, scReady = false, scPlaying = false, wantPlay = false, startTimer = 0;
+let widget = null, scReady = false, scPlaying = false, wantPlay = false;
 
-function tellUser(text, withLink) {
-  songMsg.replaceChildren(document.createTextNode(text));
-  if (withLink) {
-    const a = document.createElement('a');
-    a.href = TRACK_PAGE; a.target = '_blank'; a.rel = 'noopener';
-    a.textContent = 'Listen on SoundCloud';
-    songMsg.append(' ', a);
-  }
-  songMsg.hidden = false;
-}
 function setPlaying(on) {
   scPlaying = on;
   songBtn.textContent = on ? 'Pause our song' : 'Play our song ♡';
@@ -247,19 +230,14 @@ function setPlaying(on) {
 }
 function playSong() {
   wantPlay = true;
-  if (!scReady) return;                     // starts as soon as the player is ready
-  widget.play();
-  clearTimeout(startTimer);
-  startTimer = setTimeout(() => {
-    if (!scPlaying) tellUser('Your browser held the music back. Tap ▶ in the SoundCloud player above, or', true);
-  }, 3000);
+  if (scReady) widget.play();               // otherwise starts once ready
 }
-function initSoundCloud() {
-  if (!window.SC || !SC.Widget) {
-    tellUser("The SoundCloud player couldn't load.", true);
-    document.body.dataset.music = 'unavailable';
-    return;
-  }
+function musicUnavailable() {
+  songBtn.hidden = true;                    // the flowers carry on quietly
+  document.body.dataset.music = 'unavailable';
+}
+function initPlayer() {
+  if (!window.SC || !SC.Widget) { musicUnavailable(); return; }
   widget = SC.Widget(scFrame);
   const E = SC.Widget.Events;
   widget.bind(E.READY, () => {
@@ -267,22 +245,17 @@ function initSoundCloud() {
     setPlaying(false);
     if (wantPlay) playSong();
   });
-  widget.bind(E.PLAY, () => { clearTimeout(startTimer); songMsg.hidden = true; setPlaying(true); });
+  widget.bind(E.PLAY, () => setPlaying(true));
   widget.bind(E.PAUSE, () => setPlaying(false));
   widget.bind(E.FINISH, () => { widget.seekTo(0); widget.play(); });   // keep it going
-  widget.bind(E.ERROR, () => tellUser("SoundCloud couldn't play the song here.", true));
-  setTimeout(() => {
-    if (!scReady) {
-      tellUser("The SoundCloud player didn't load.", true);
-      document.body.dataset.music = 'unavailable';
-    }
-  }, 12000);
+  widget.bind(E.ERROR, musicUnavailable);
+  setTimeout(() => { if (!scReady) musicUnavailable(); }, 12000);
 }
 songBtn.addEventListener('click', () => {
   if (scPlaying) { wantPlay = false; widget.pause(); } else playSong();
 });
 document.body.dataset.music = 'loading';
-initSoundCloud();
+initPlayer();
 
 // "Open your flowers": starts the bloom from the bud and the song together.
 openBtn.addEventListener('click', () => {

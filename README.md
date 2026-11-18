@@ -68,11 +68,11 @@ After changing the bouquet, rebuild the page with `python3 export_web.py --out d
 
 ## Music
 
-The web page plays **Ribs by Lorde** through SoundCloud's official embedded player (its compact 20 px version, styled dark to match the page). Nothing is downloaded or rehosted: the page controls SoundCloud's own player through the [Widget API](https://developers.soundcloud.com/docs/api/html5-widget).
+The web page streams its song through an invisible SoundCloud embedded player, controlled with the [Widget API](https://developers.soundcloud.com/docs/api/html5-widget); nothing is downloaded or rehosted. Only one control shows: **Play our song ♡**.
 
 - Tapping **Open your flowers** starts the bloom and the song together; **Play our song ♡** plays and pauses it. The song starts over when it ends.
-- Phones only allow sound after a tap. If a browser still holds the music back, the page says so and offers SoundCloud's own play button plus a link to the track.
-- If SoundCloud can't load at all, the flowers play on with a link to listen on SoundCloud.
+- Phones only allow sound after a tap, which is why the music waits for one.
+- If the player can't load, the song button disappears and the flowers carry on quietly.
 
 The terminal version (`python3 main.py`) can play a local file instead: it plays `web/audio/song.mp3` 1 s after launch (macOS `afplay`), or pass `--music path/to/song.mp3` / `--no-music`. Audio files are never committed.
 
