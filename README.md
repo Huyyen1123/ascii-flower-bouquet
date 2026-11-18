@@ -66,6 +66,10 @@ The site is static: `docs/index.html` holds every frame plus the player, so no s
 
 After changing the bouquet, rebuild the page with `python3 export_web.py --out docs/index.html` and push.
 
+## Analytics
+
+The Vercel deployment uses [Vercel Web Analytics](https://vercel.com/docs/analytics). The page has no build step, so it loads the tracker (`/_vercel/insights/script.js`) with a small inline script instead of the `@vercel/analytics` npm package, and only on the `vercel.app` address. The catch-all rewrite in `vercel.json` skips `/_vercel/` so the tracker is served normally. Visits show in the project's **Analytics** tab on Vercel once it's enabled there.
+
 ## Music
 
 The web page plays **"I Root" by Michael Nau**, streamed by SoundCloud through an invisible embedded player and controlled with the [Widget API](https://developers.soundcloud.com/docs/api/html5-widget); nothing is downloaded or rehosted. There are no music controls on the page; the bouquet starts blooming straight away.
