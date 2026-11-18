@@ -68,11 +68,14 @@ After changing the bouquet, rebuild the page with `python3 export_web.py --out d
 
 ## Music
 
-The web page streams its song through an invisible SoundCloud embedded player, controlled with the [Widget API](https://developers.soundcloud.com/docs/api/html5-widget); nothing is downloaded or rehosted. There are no music controls on the page.
+The web page plays **"I Root" by Michael Nau**, streamed by SoundCloud through an invisible embedded player and controlled with the [Widget API](https://developers.soundcloud.com/docs/api/html5-widget); nothing is downloaded or rehosted. A small line under the bouquet shows the song name with a Pause / Play button.
 
-- The song starts by itself as soon as the player is ready, and starts over when it ends.
-- Where the browser holds sound back until the visitor interacts (most phones, and desktop browsers on a first visit), it starts on the first tap, click or key press anywhere on the page.
-- If the player can't load, the flowers carry on quietly.
+- On load the page asks the player to start. If the browser allows sound without a tap, the bouquet fades in with the music straight away.
+- If the browser holds sound back (most phones, and many desktop browsers on a first visit), a black screen shows **Open your flowers ♡**. That tap starts the song and the bloom together.
+- If a browser still refuses to start the song from that tap, SoundCloud's compact player bar appears under the bouquet so one tap on it starts the song. Playback is never retried on its own.
+- The song starts over when it ends. If the player can't load, the flowers open quietly.
+
+Browsers decide whether sound may start without a tap, so unmuted autoplay can't be guaranteed on phones.
 
 The terminal version (`python3 main.py`) can play a local file instead: it plays `web/audio/song.mp3` 1 s after launch (macOS `afplay`), or pass `--music path/to/song.mp3` / `--no-music`. Audio files are never committed.
 
@@ -86,4 +89,4 @@ The terminal version (`python3 main.py`) can play a local file instead: it plays
 | `petals.py` | the falling-petal system: a fixed pool of reused petal slots on curved, swirling, tumbling paths that fade out and respawn; can run as an exact 15 s loop |
 | `renderer.py` | bloom animation, rotation, perspective projection, Z-buffer, lighting, edge outlines, ANSI frame builder |
 | `export_web.py` | renders the bloom and the 15 s loop into `web/index.html` |
-| `web/template.html` | the page the frames are played in (canvas player, Open your flowers start, SoundCloud music) |
+| `web/template.html` | the page the frames are played in (canvas player, Open your flowers ♡ opening, SoundCloud music) |

@@ -2,9 +2,8 @@
 """Pre-render the bouquet into a self-contained local web page.
 
 Writes web/index.html: the bloom plays once (18 s), then a seamless 15 s loop
-(rotation, sway and falling petals all repeat exactly). Tapping "Open your
-flowers" starts the bloom and "Ribs" by Lorde through SoundCloud's embedded
-player (streamed by SoundCloud, nothing rehosted).
+(rotation, sway and falling petals all repeat exactly), with "I Root" by
+Michael Nau streamed through SoundCloud's embedded player (nothing rehosted).
 
 Local page:   python3 export_web.py; open web/index.html
 Public site:  python3 export_web.py --out docs/index.html
