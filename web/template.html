@@ -94,11 +94,14 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px 12px;
-    font-size: 13px;
+    gap: 8px 12px;
+    font-size: 12px;
     color: var(--muted);
   }
-  /* The music player runs invisibly; only the button shows. */
+  .player .track { color: var(--accent); letter-spacing: 0.02em; }
+  button.small { font-size: 12px; padding: 4px 10px; }
+  /* The embedded player runs invisibly. Only if a browser refuses to start it
+     from our own buttons does its compact bar appear, to be tapped directly. */
   .sc {
     position: fixed;
     left: 0;
@@ -109,9 +112,60 @@
     opacity: 0;
     pointer-events: none;
   }
+  .sc.show {
+    position: static;
+    width: 100%;
+    height: 20px;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* Everything fades in together once the flowers open. */
+  .stage {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    opacity: 0;
+    transition: opacity 1.6s ease;
+  }
+  .stage.open { opacity: 1; }
+  #gate {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    background: var(--bg);
+    transition: opacity 0.8s ease;
+  }
+  #gate.leaving { opacity: 0; pointer-events: none; }
+  #gate .heart { color: var(--leaf); font-size: 22px; animation: beat 1.6s ease-in-out infinite; }
+  #open {
+    font: 700 16px var(--mono);
+    letter-spacing: 0.03em;
+    padding: 14px 28px;
+    border-radius: 999px;
+    padding: 14px 44px;
+    color: #000;
+    background: var(--leaf);
+    box-shadow: 0 0 28px rgba(168, 240, 160, 0.45);
+    animation: glow 2.4s ease-in-out infinite;
+  }
+  @keyframes beat { 0%, 100% { opacity: 0.35; transform: scale(0.92); } 50% { opacity: 1; transform: scale(1.08); } }
+  @keyframes glow { 0%, 100% { box-shadow: 0 0 18px rgba(168, 240, 160, 0.30); } 50% { box-shadow: 0 0 36px rgba(168, 240, 160, 0.65); } }
+  @media (prefers-reduced-motion: reduce) {
+    .stage, #gate { transition: none; }
+    #gate .heart, #open { animation: none; }
+  }
   [hidden] { display: none !important; }
 </style>
 
+<div id="gate" aria-live="polite">
+  <span class="heart" id="wait" aria-label="Loading">♡</span>
+  <button id="open" type="button" hidden>Open</button>
+</div>
+<div class="stage" id="stage">
 <div class="term">
   <div class="bar">
     <span class="dots"><i></i><i></i><i></i></span>
@@ -124,9 +178,11 @@
   <span class="btns"><button id="replay" type="button" class="ghost">Replay bloom</button></span>
   <span id="status"></span>
 </div>
-<div class="player" aria-label="Music">
-  <iframe id="sc" class="sc" title="Background music" aria-hidden="true" tabindex="-1" allow="autoplay; encrypted-media"
-          src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A309952156&amp;color=%23ff5fa8&amp;auto_play=false&amp;hide_related=true&amp;show_comments=false&amp;show_user=false&amp;show_reposts=false&amp;show_teaser=false&amp;show_artwork=false&amp;visual=false"></iframe>
+<div class="player" id="player" aria-label="Music">
+  <button id="pp" type="button" class="ghost small" hidden>Pause</button>
+  <iframe id="sc" class="sc" title="I Root — Michael Nau" allow="autoplay; encrypted-media"
+          src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A309952156&amp;color=%23ff5fa8&amp;auto_play=false&amp;hide_related=true&amp;show_comments=false&amp;show_user=false&amp;show_reposts=false&amp;show_teaser=false&amp;visual=false"></iframe>
+</div>
 </div>
 <script src="https://w.soundcloud.com/player/api.js"></script>
 
@@ -200,37 +256,100 @@ async function decode() {
   return new Uint16Array(buf);
 }
 
-replay.addEventListener('click', () => {
-  t0 = performance.now(); offset = 0; frameIdx = -1;
-  playing = true;
-});
 window.addEventListener('resize', () => { layout(); if (frameIdx >= 0) draw(frameIdx); });
 
-// ---- Music -----------------------------------------------------------------
-// An invisible embedded player streams the song; the page drives it through
-// the player's Widget API. It tries to start as soon as it is ready; where
-// the browser holds sound back until the visitor interacts (most phones, and
-// desktop browsers on a first visit), it starts on the first tap, click or
-// key press anywhere on the page.
+// ---- Opening and music -----------------------------------------------------
+// "I Root" by Michael Nau streams from SoundCloud through an invisible embedded
+// player, driven by its Widget API; nothing is downloaded or rehosted.
+//
+// On load the page asks the player to start. If the browser lets it play
+// unprompted, the bouquet fades in with the music. If the browser holds sound
+// back until the visitor interacts (most phones), a black screen offers
+// a single "Open" button; that tap calls play() straight from the click
+// handler, so the tap itself counts as the permission, and the bouquet fades
+// in at the same moment. Should a browser still refuse, the next tap anywhere
+// on the page asks again. Playback is never retried on its own.
+const gate = document.getElementById('gate');
+const openBtn = document.getElementById('open');
+const waitHeart = document.getElementById('wait');
+const stage = document.getElementById('stage');
+const pp = document.getElementById('pp');
+const playerRow = document.getElementById('player');
 const scFrame = document.getElementById('sc');
-let widget = null, scReady = false, wantPlay = true, scPlaying = false;
+let widget = null, scReady = false, scPlaying = false, failed = false;
+let phase = 'deciding';            // deciding -> gate -> open
+let wantPlay = true, fallbackTimer = 0, decideTimer = 0, framesReady = false, revealed = false;
+
+function music(state) { document.body.dataset.music = state; }
+const TAP_EVENTS = ['pointerdown', 'touchend', 'keydown'];
+function onTap() { if (!scPlaying) play(); }
+function waitForTap() { TAP_EVENTS.forEach(e => window.addEventListener(e, onTap, { capture: true })); }
+function stopWaitingForTap() { TAP_EVENTS.forEach(e => window.removeEventListener(e, onTap, { capture: true })); }
+
+function startBouquet() {
+  if (!framesReady || !revealed) return;
+  layout(); t0 = performance.now(); offset = 0; frameIdx = -1;
+  playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!playing) draw(NI);          // reduced motion: one still, fully bloomed
+}
+function reveal() {
+  if (revealed) return;
+  revealed = true; phase = 'open';
+  clearTimeout(decideTimer);
+  gate.classList.add('leaving');
+  setTimeout(() => { gate.hidden = true; }, 900);
+  stage.classList.add('open');
+  document.body.dataset.phase = 'open';
+  startBouquet();
+}
+function showGate() {
+  if (phase !== 'deciding') return;
+  phase = 'gate';
+  document.body.dataset.phase = 'gate';
+  waitHeart.hidden = true;
+  openBtn.hidden = false;
+  openBtn.focus({ preventScroll: true });
+}
 
 function setPlaying(on) {
   scPlaying = on;
-  document.body.dataset.music = on ? 'playing' : (scReady ? 'ready' : 'loading');
-  if (on) stopWaitingForTap();
+  music(on ? 'playing' : (scReady ? 'paused' : 'loading'));
+  pp.textContent = on ? 'Pause' : 'Play ♡';
+  if (on) {
+    clearTimeout(fallbackTimer);
+    stopWaitingForTap();
+    if (phase !== 'open') reveal();          // autoplay was allowed (even if slow to start)
+  }
 }
-const TAP_EVENTS = ['pointerdown', 'touchend', 'keydown'];
-function onFirstTap() { if (!scPlaying) playSong(); }
-function waitForTap() { TAP_EVENTS.forEach(e => window.addEventListener(e, onFirstTap, { capture: true })); }
-function stopWaitingForTap() { TAP_EVENTS.forEach(e => window.removeEventListener(e, onFirstTap, { capture: true })); }
-function playSong() {
+function play() {
   wantPlay = true;
-  if (scReady) widget.play();               // otherwise starts once ready
+  if (scReady) widget.play();                // called inside the tap handler
+}
+// After a tap that should have started the song: if nothing is playing a few
+// seconds later, show the player's own bar for one direct tap.
+function expectPlayback() {
+  clearTimeout(fallbackTimer);
+  fallbackTimer = setTimeout(() => {
+    if (scPlaying || failed) return;
+    music('needs-tap');
+    waitForTap();                  // try again on her next tap anywhere
+  }, 3500);
 }
 function musicUnavailable() {
-  document.body.dataset.music = 'unavailable';   // the flowers carry on quietly
+  if (failed) return;
+  failed = true;
+  clearTimeout(fallbackTimer);
+  music('unavailable');
+  playerRow.hidden = true;                    // the flowers carry on quietly
+  if (phase !== 'open') reveal();
 }
+
+openBtn.addEventListener('click', () => { play(); reveal(); expectPlayback(); });
+pp.addEventListener('click', () => {
+  if (scPlaying) { wantPlay = false; widget.pause(); }
+  else { play(); expectPlayback(); }
+});
+
 function initPlayer() {
   if (!window.SC || !SC.Widget) { musicUnavailable(); return; }
   widget = SC.Widget(scFrame);
@@ -238,20 +357,29 @@ function initPlayer() {
   widget.bind(E.READY, () => {
     scReady = true;
     setPlaying(false);
-    if (wantPlay) playSong();
+    if (phase === 'deciding') {
+      widget.play();                          // autoplay attempt, once
+      decideTimer = setTimeout(showGate, 3000);
+    } else if (wantPlay) {
+      widget.play();                          // tapped before the player was ready
+    }
   });
-  // A blocked autoplay reports PLAY and then PAUSE at once, so only count
-  // the song as playing once it is actually moving, and keep listening for
-  // the first tap until then.
-  widget.bind(E.PLAY_PROGRESS, () => { if (!scPlaying) setPlaying(true); });
-  widget.bind(E.PAUSE, () => { setPlaying(false); waitForTap(); });
-  widget.bind(E.FINISH, () => { widget.seekTo(0); widget.play(); });   // keep it going
+  // A blocked attempt reports PLAY then PAUSE straight away, so the song only
+  // counts as playing once it is actually moving.
+  // A last progress report can trail a pause, so ignore it if the visitor paused.
+  widget.bind(E.PLAY_PROGRESS, () => { if (!scPlaying && wantPlay) setPlaying(true); });
+  widget.bind(E.PAUSE, () => { setPlaying(false); if (phase === 'deciding') showGate(); });
+  widget.bind(E.FINISH, () => { widget.seekTo(0); widget.play(); });   // play it again
   widget.bind(E.ERROR, musicUnavailable);
   setTimeout(() => { if (!scReady) musicUnavailable(); }, 12000);
+  // A slow connection shouldn't leave a black screen: offer the button.
+  setTimeout(() => { if (!scPlaying) showGate(); }, 6000);
 }
-document.body.dataset.music = 'loading';
-waitForTap();
+music('loading');
+document.body.dataset.phase = 'deciding';
 initPlayer();
+
+replay.addEventListener('click', () => { t0 = performance.now(); offset = 0; frameIdx = -1; playing = true; });
 
 (async () => {
   layout(); draw(0);
@@ -260,11 +388,12 @@ initPlayer();
     frames = await decode();
   } catch (e) {
     status.textContent = 'This browser could not unpack the animation. Try a current Chrome, Safari or Firefox.';
+    reveal();
     return;
   }
+  framesReady = true;
   layout(); draw(0);
-  t0 = performance.now(); offset = 0; frameIdx = -1;
-  playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   requestAnimationFrame(tick);
+  startBouquet();
 })();
 </script>
