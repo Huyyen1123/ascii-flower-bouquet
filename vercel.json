@@ -3,5 +3,11 @@
   "framework": null,
   "installCommand": "echo 'Static site: nothing to install'",
   "buildCommand": "echo 'Static site: docs/ is prebuilt with export_web.py'",
-  "outputDirectory": "docs"
+  "outputDirectory": "docs",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }
