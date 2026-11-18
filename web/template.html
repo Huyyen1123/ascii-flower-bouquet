@@ -220,14 +220,16 @@ audio.addEventListener('timeupdate', () => {
 });
 seek.addEventListener('input', () => { seeking = true; cur.textContent = fmt(+seek.value); });
 seek.addEventListener('change', () => { audio.currentTime = +seek.value; seeking = false; });
-audio.addEventListener('error', () => {
-  status.textContent = 'Song not found: put ribs.mp3 next to this page.';
-});
+// No song next to the page (e.g. the public site): hide the player quietly.
+let noSong = false;
+audio.addEventListener('error', () => { noSong = true; player.hidden = true; status.textContent = ''; });
 
 // Start the song one second after the page opens. Browsers may block sound
 // until the first click or key press; if so, the first one starts it.
 setTimeout(() => {
-  audio.play().catch(() => {
+  if (noSong) return;
+  audio.play().catch(err => {
+    if (noSong || !err || err.name !== 'NotAllowedError') return;   // missing file, not a block
     status.textContent = 'Click anywhere to start the music';
     const start = e => {
       if (e && e.target && player.contains(e.target)) return;   // controls handle themselves

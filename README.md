@@ -13,6 +13,8 @@ Every flower, leaf, stem and the ribbon is a cloud of sampled 3D points (~195k i
 7. lights each point (Lambert + specular + depth cueing), darkens silhouette edges, and swaps shadowed glyphs for lighter ones (`*`→`+`→`:`→`.`); flower heads take their glyph from a brightness ramp (`.` `:` `+` `*` `o` `%` `@`) so petal curves read clearly,
 8. writes one ANSI 24-bit-colour frame in place, using cursor-home and synchronized output. The screen is never cleared, so it doesn't flicker.
 
+**Live demo:** https://huyyen1123.github.io/ascii-flower-bouquet/
+
 ## Setup
 
 ```bash
@@ -53,7 +55,7 @@ python3 export_web.py
 open web/index.html
 ```
 
-`export_web.py` pre-renders the animation into a single page, `web/index.html`: the bloom plays once (18 s), then the bouquet keeps turning in a seamless 15 s loop with the petals falling. The page has Pause and Replay bloom buttons.
+`export_web.py` pre-renders the animation into a single page, `web/index.html` (the public site is the same page built with `--out docs/index.html`): the bloom plays once (18 s), then the bouquet keeps turning in a seamless 15 s loop with the petals falling. The page has Pause and Replay bloom buttons.
 
 ## Music
 

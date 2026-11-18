@@ -5,8 +5,12 @@ Writes web/index.html: the bloom plays once (18 s), then a seamless 15 s loop
 (rotation, sway and falling petals all repeat exactly). The page plays
 web/ribs.mp3 one second after it opens, with play/pause and a
 seek bar. Open it with:  open web/index.html
+
+The public site (GitHub Pages) is built with:  python3 export_web.py --out docs/index.html
+With no ribs.mp3 beside it, the page hides its music player.
 """
 
+import argparse
 import base64
 import json
 import os
@@ -25,6 +29,10 @@ INTRO, NI = 18.0, 360           # bloom section: 18 s at 20 fps
 
 
 def main():
+    ap = argparse.ArgumentParser(description='Render the bouquet into a web page.')
+    ap.add_argument('--out', default=os.path.join(HERE, 'web', 'index.html'),
+                    help='where to write the page (default: web/index.html)')
+    args = ap.parse_args()
     b = bouquet.build()
     r = renderer.Renderer(b, period=P, petals=petals.PetalSystem(b.anchors, period=P, loop=True))
     r.sway_w = (2 * np.pi / P * 3, 2 * np.pi / P * 2)      # sway repeats every 15 s
@@ -51,7 +59,8 @@ def main():
             '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
             '<style>body{margin:0;font:14px system-ui,sans-serif}</style>\n'
             '</head><body>\n' + body + '\n</body></html>\n')
-    out = os.path.join(HERE, 'web', 'index.html')
+    out = os.path.abspath(args.out)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
     open(out, 'w').write(page)
     print('wrote', out, f'({len(page) / 1e6:.1f} MB)')
 
