@@ -16,7 +16,7 @@ import time
 import bouquet
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SONG = os.path.join(HERE, 'web', 'ribs.mp3')
+SONG = os.path.join(HERE, 'web', 'audio', 'song.mp3')
 from petals import PetalSystem
 from renderer import BG, Renderer
 
@@ -42,7 +42,7 @@ def main():
     ap.add_argument('--no-bloom', action='store_true',
                     help='start with every flower already open')
     ap.add_argument('--music', default=SONG,
-                    help='audio file to play 1 s after start (default: web/ribs.mp3)')
+                    help='audio file to play 1 s after start (default: web/audio/song.mp3)')
     ap.add_argument('--no-music', action='store_true', help='run silently')
     ap.add_argument('--frames', type=int, default=0,
                     help='stop after N frames (0 = run forever)')

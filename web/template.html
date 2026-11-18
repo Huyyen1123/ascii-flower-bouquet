@@ -87,6 +87,19 @@
   .time { font-variant-numeric: tabular-nums; min-width: 3.4em; text-align: center; }
   #seek { flex: 1 1 160px; min-width: 0; accent-color: var(--accent); cursor: pointer; }
   #seek:disabled { cursor: default; }
+  [hidden] { display: none !important; }
+  .songmsg { flex-basis: 100%; color: var(--accent); }
+  .gate {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.6);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .gate button { font-size: 16px; padding: 12px 22px; }
 </style>
 
 <div class="term">
@@ -103,13 +116,17 @@
   <span id="status"></span>
 </div>
 <div class="player" aria-label="Music">
-  <span class="songname" id="songname">Lorde · Ribs</span>
+  <span class="songname" id="songname">__SONG_TITLE__</span>
+  <span class="songmsg" id="songmsg" role="status" hidden></span>
   <button id="songplay" type="button">Play song</button>
   <span class="time" id="cur">0:00</span>
   <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="Song position">
-  <span class="time" id="dur">0:00</span>
+  <span class="time" id="dur">--:--</span>
 </div>
-<audio id="audio" preload="auto" src="ribs.mp3"></audio>
+<audio id="audio" preload="metadata" loop playsinline src="audio/song.mp3"></audio>
+<div class="gate" id="gate">
+  <button id="open" type="button">Open your flowers</button>
+</div>
 
 <script>
 const META = __META__;
@@ -126,8 +143,9 @@ const replay = document.getElementById('replay');
 // The first NI frames are the bloom (played once, INTRO seconds long); the
 // N frames after them loop forever.
 const INTRO = META.intro, NI = META.ni;
-let frames = null, playing = true, frameIdx = -1, t0 = performance.now(), offset = 0;
+let frames = null, playing = false, frameIdx = -1, t0 = performance.now(), offset = 0;
 function indexAt(elapsed) {
+  elapsed = Math.max(0, elapsed);     // a frame stamped just before a tap
   if (elapsed < INTRO) return Math.min(NI - 1, Math.floor(elapsed / INTRO * NI));
   return NI + Math.floor(((elapsed - INTRO) % PERIOD) / PERIOD * N) % N;
 }
@@ -191,26 +209,93 @@ replay.addEventListener('click', () => {
 });
 window.addEventListener('resize', () => { layout(); if (frameIdx >= 0) draw(frameIdx); });
 
-// ---- Music: plays the song next to this file, starting 1 s after load ----
+// ---- Music ------------------------------------------------------------------
+// The song lives at audio/song.mp3 next to this page. It starts when the
+// viewer taps "Open your flowers" or "Play song" (a tap is what lets phones
+// play sound), fades in over 2 s and loops.
 const audio = document.getElementById('audio');
 const songBtn = document.getElementById('songplay');
 const seek = document.getElementById('seek');
 const cur = document.getElementById('cur');
 const dur = document.getElementById('dur');
-const player = document.querySelector('.player');
-let seeking = false;
+const songName = document.getElementById('songname');
+const songMsg = document.getElementById('songmsg');
+const gate = document.getElementById('gate');
+const openBtn = document.getElementById('open');
+const FADE_S = 2;
+let seeking = false, songOk = null, actx = null, gain = null;
+if (!songName.textContent.trim()) songName.hidden = true;
 
 const fmt = s => {
-  if (!isFinite(s)) return '0:00';
+  if (!isFinite(s)) return '--:--';
   s = Math.max(0, Math.floor(s));
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 };
-songBtn.addEventListener('click', () => {
-  if (audio.paused) audio.play().catch(() => {}); else audio.pause();
-});
-audio.addEventListener('play', () => { songBtn.textContent = 'Pause song'; status.textContent = ''; });
+function say(msg) { songMsg.textContent = msg; songMsg.hidden = !msg; }
+function songUnavailable() {
+  songOk = false;
+  audio.pause();
+  songBtn.disabled = true;
+  seek.disabled = true;
+  cur.textContent = '--:--';
+  dur.textContent = '--:--';
+  say("The song couldn't be loaded, so the flowers are playing without music.");
+}
+audio.addEventListener('error', songUnavailable);
+// Phones often skip preloading, so ask the server directly whether the file
+// is there instead of waiting for a play attempt to fail.
+if (location.protocol.startsWith('http')) {
+  fetch(audio.currentSrc || audio.src, { method: 'HEAD', cache: 'no-store' })
+    .then(r => { if (!r.ok) songUnavailable(); })
+    .catch(() => {});
+}
+
+// 2 s fade-in. iPhone Safari ignores audio.volume, so over http(s) the fade
+// runs through Web Audio; opened from a file it falls back to the volume.
+const AC = window.AudioContext || window.webkitAudioContext;
+const useWebAudio = !!AC && location.protocol.startsWith('http');
+function fadeIn() {
+  if (useWebAudio) {
+    try {
+      if (!actx) {
+        actx = new AC();
+        gain = actx.createGain();
+        actx.createMediaElementSource(audio).connect(gain).connect(actx.destination);
+      }
+      actx.resume();
+      const now = actx.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(1, now + FADE_S);
+      return;
+    } catch (e) { /* fall through to the volume fade */ }
+  }
+  audio.volume = 0;
+  const start = performance.now();
+  const step = now => {
+    const k = Math.min(1, (now - start) / (FADE_S * 1000));
+    audio.volume = k;
+    if (k < 1 && !audio.paused) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+// Must run inside a tap/click so every browser allows the sound.
+function startSong() {
+  if (songOk === false) return;
+  fadeIn();
+  const p = audio.play();
+  if (p && p.catch) p.catch(err => {
+    if (songOk === false) return;
+    if (err && err.name === 'NotAllowedError') say('Tap "Play song" to start the music.');
+    else songUnavailable();
+  });
+}
+
+songBtn.addEventListener('click', () => { if (audio.paused) startSong(); else audio.pause(); });
+audio.addEventListener('play', () => { songBtn.textContent = 'Pause song'; if (songOk !== false) say(''); });
 audio.addEventListener('pause', () => { songBtn.textContent = 'Play song'; });
 audio.addEventListener('loadedmetadata', () => {
+  songOk = true;
   seek.max = audio.duration;
   dur.textContent = fmt(audio.duration);
 });
@@ -219,28 +304,20 @@ audio.addEventListener('timeupdate', () => {
   cur.textContent = fmt(seeking ? +seek.value : audio.currentTime);
 });
 seek.addEventListener('input', () => { seeking = true; cur.textContent = fmt(+seek.value); });
-seek.addEventListener('change', () => { audio.currentTime = +seek.value; seeking = false; });
-// No song next to the page (e.g. the public site): hide the player quietly.
-let noSong = false;
-audio.addEventListener('error', () => { noSong = true; player.hidden = true; status.textContent = ''; });
+seek.addEventListener('change', () => {
+  if (isFinite(audio.duration)) audio.currentTime = +seek.value;
+  seeking = false;
+});
 
-// Start the song one second after the page opens. Browsers may block sound
-// until the first click or key press; if so, the first one starts it.
-setTimeout(() => {
-  if (noSong) return;
-  audio.play().catch(err => {
-    if (noSong || !err || err.name !== 'NotAllowedError') return;   // missing file, not a block
-    status.textContent = 'Click anywhere to start the music';
-    const start = e => {
-      if (e && e.target && player.contains(e.target)) return;   // controls handle themselves
-      audio.play().catch(() => {});
-      window.removeEventListener('pointerdown', start);
-      window.removeEventListener('keydown', start);
-    };
-    window.addEventListener('pointerdown', start);
-    window.addEventListener('keydown', start);
-  });
-}, 1000);
+// "Open your flowers": starts the bloom from the bud and the music together.
+openBtn.addEventListener('click', () => {
+  gate.hidden = true;
+  t0 = performance.now(); offset = 0; frameIdx = -1;
+  playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  btn.textContent = playing ? 'Pause' : 'Play';
+  if (!playing) draw(0);
+  startSong();
+});
 
 (async () => {
   layout(); draw(0);
@@ -252,10 +329,7 @@ setTimeout(() => {
     return;
   }
   layout(); draw(0);
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    playing = false; btn.textContent = 'Play';
-  }
-  t0 = performance.now(); offset = 0;
+  openBtn.focus();
   requestAnimationFrame(tick);
 })();
 </script>

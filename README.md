@@ -42,7 +42,7 @@ Options:
 | `--petals` | 26 | number of drifting petals |
 | `--no-petals` | off | turn the falling petals off |
 | `--no-bloom` | off | start with every flower already open |
-| `--music` | `web/ribs.mp3` | song to play 1 s after start (macOS `afplay`) |
+| `--music` | `web/audio/song.mp3` | song to play 1 s after start (macOS `afplay`) |
 | `--no-music` | off | run silently |
 | `--frames` | 0 | stop after N frames (0 = forever) |
 
@@ -55,7 +55,7 @@ python3 export_web.py
 open web/index.html
 ```
 
-`export_web.py` pre-renders the animation into a single page, `web/index.html` (the public site is the same page built with `--out docs/index.html`): the bloom plays once (18 s), then the bouquet keeps turning in a seamless 15 s loop with the petals falling. The page has Pause and Replay bloom buttons.
+`export_web.py` pre-renders the animation into a single page, `web/index.html` (the public site is the same page built with `--out docs/index.html`): the bloom plays once (18 s), then the bouquet keeps turning in a seamless 15 s loop with the petals falling. The page opens on the closed buds with an **Open your flowers** button, and has Pause and Replay bloom buttons.
 
 ## Deploying
 
@@ -68,10 +68,11 @@ After changing the bouquet, rebuild the page with `python3 export_web.py --out d
 
 ## Music
 
-The song is not included in this repository. To add one, put an MP3 at `web/ribs.mp3` (or pass `--music path/to/song.mp3` in the terminal):
+The page plays `audio/song.mp3` from the folder it sits in. Nothing plays until a visitor taps **Open your flowers** (or **Play song**): that tap starts the bloom and the song together, which is what lets iPhone Safari and Android play sound. The song fades in over 2 seconds and loops, with play/pause and a seek bar. If the file is missing or can't be decoded, the player says so and the flowers play without music.
 
-- the terminal version starts it 1 s after launch and stops it when you quit;
-- the web page starts it 1 s after opening, with play/pause and a seek bar. Browsers may hold the sound until your first click or key press.
+- **Public site:** put a track you are allowed to distribute at `docs/audio/song.mp3`, commit it (`.gitignore` allows exactly that file) and push. See `docs/audio/README.md`.
+- **Local page:** put any song at `web/audio/song.mp3` and build with `python3 export_web.py --song-title "Artist · Song"`. Files in `web/` are never committed.
+- **Terminal:** `python3 main.py` plays `web/audio/song.mp3` 1 s after launch (macOS `afplay`); pass `--music path/to/song.mp3` or `--no-music`.
 
 ## Files
 
