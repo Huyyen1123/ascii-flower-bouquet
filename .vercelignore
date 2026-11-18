@@ -1,0 +1,8 @@
+# Vercel serves only the prebuilt static viewer in docs/.
+# The Python generator is for local use; keep it out of the deployment so
+# Vercel never tries to run main.py as a Python function.
+*.py
+requirements.txt
+__pycache__/
+.venv/
+web/

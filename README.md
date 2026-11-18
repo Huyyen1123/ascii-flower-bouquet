@@ -57,6 +57,15 @@ open web/index.html
 
 `export_web.py` pre-renders the animation into a single page, `web/index.html` (the public site is the same page built with `--out docs/index.html`): the bloom plays once (18 s), then the bouquet keeps turning in a seamless 15 s loop with the petals falling. The page has Pause and Replay bloom buttons.
 
+## Deploying
+
+The site is static: `docs/index.html` holds every frame plus the player, so no server or build step is needed.
+
+- **GitHub Pages** serves `docs/` from `main`.
+- **Vercel** uses `vercel.json` (no framework, no build, output directory `docs`). `.vercelignore` keeps the Python files out of the upload, so Vercel never tries to run `main.py` as a serverless function.
+
+After changing the bouquet, rebuild the page with `python3 export_web.py --out docs/index.html` and push.
+
 ## Music
 
 The song is not included in this repository. To add one, put an MP3 at `web/ribs.mp3` (or pass `--music path/to/song.mp3` in the terminal):
