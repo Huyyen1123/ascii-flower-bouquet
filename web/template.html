@@ -11,6 +11,7 @@
     --fg: #e6e6ea;
     --muted: #8d8d98;
     --accent: #ff5fa8;      /* the ribbon pink */
+    --leaf: #a8f0a0;        /* light leaf green for Replay bloom */
     --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     color-scheme: dark;
   }
@@ -70,6 +71,7 @@
   }
   .btns { display: flex; gap: 8px; }
   button.ghost { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  #replay { color: var(--leaf); box-shadow: inset 0 0 0 1px var(--leaf); }
   button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
   code { color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; }
   #status { min-height: 1em; }
@@ -117,12 +119,10 @@
   <canvas id="screen" width="880" height="920" aria-label="A rotating bouquet of flowers drawn in coloured ASCII characters"></canvas>
 </div>
 <div class="controls">
-  <span class="btns"><button id="toggle" type="button">Pause</button>
-  <button id="replay" type="button" class="ghost">Replay bloom</button></span>
+  <span class="btns"><button id="replay" type="button" class="ghost">Replay bloom</button></span>
   <span id="status"></span>
 </div>
 <div class="player" aria-label="Music">
-  <button id="songplay" type="button" aria-pressed="false">Play our song ♡</button>
   <iframe id="sc" class="sc" title="Background music" aria-hidden="true" tabindex="-1" allow="autoplay; encrypted-media"
           src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A500269605&amp;color=%23ff5fa8&amp;auto_play=false&amp;hide_related=true&amp;show_comments=false&amp;show_user=false&amp;show_reposts=false&amp;show_teaser=false&amp;show_artwork=false&amp;visual=false"></iframe>
 </div>
@@ -137,7 +137,6 @@ const BLOB = "__BLOB__";
 
 const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d');
-const btn = document.getElementById('toggle');
 const status = document.getElementById('status');
 const { w: W, h: H, n: N, period: PERIOD, chars: CHARS, palette } = META;
 const COLORS = [null, ...palette];
@@ -202,30 +201,22 @@ async function decode() {
   return new Uint16Array(buf);
 }
 
-btn.addEventListener('click', () => {
-  if (playing) { offset = (performance.now() - t0) / 1000 + offset; playing = false; btn.textContent = 'Play'; }
-  else { t0 = performance.now(); playing = true; btn.textContent = 'Pause'; }
-});
 replay.addEventListener('click', () => {
   t0 = performance.now(); offset = 0; frameIdx = -1;
-  playing = true; btn.textContent = 'Pause';
+  playing = true;
 });
 window.addEventListener('resize', () => { layout(); if (frameIdx >= 0) draw(frameIdx); });
 
 // ---- Music -----------------------------------------------------------------
 // An invisible embedded player streams the song; the page drives it through
 // the player's Widget API. Phones only allow sound after a tap, so music
-// starts from "Open your flowers" or "Play our song".
-const songBtn = document.getElementById('songplay');
+// starts from "Open your flowers".
 const scFrame = document.getElementById('sc');
 const gate = document.getElementById('gate');
 const openBtn = document.getElementById('open');
-let widget = null, scReady = false, scPlaying = false, wantPlay = false;
+let widget = null, scReady = false, wantPlay = false;
 
 function setPlaying(on) {
-  scPlaying = on;
-  songBtn.textContent = on ? 'Pause our song' : 'Play our song ♡';
-  songBtn.setAttribute('aria-pressed', String(on));
   document.body.dataset.music = on ? 'playing' : (scReady ? 'ready' : 'loading');
 }
 function playSong() {
@@ -233,8 +224,7 @@ function playSong() {
   if (scReady) widget.play();               // otherwise starts once ready
 }
 function musicUnavailable() {
-  songBtn.hidden = true;                    // the flowers carry on quietly
-  document.body.dataset.music = 'unavailable';
+  document.body.dataset.music = 'unavailable';   // the flowers carry on quietly
 }
 function initPlayer() {
   if (!window.SC || !SC.Widget) { musicUnavailable(); return; }
@@ -251,9 +241,6 @@ function initPlayer() {
   widget.bind(E.ERROR, musicUnavailable);
   setTimeout(() => { if (!scReady) musicUnavailable(); }, 12000);
 }
-songBtn.addEventListener('click', () => {
-  if (scPlaying) { wantPlay = false; widget.pause(); } else playSong();
-});
 document.body.dataset.music = 'loading';
 initPlayer();
 
@@ -262,7 +249,6 @@ openBtn.addEventListener('click', () => {
   gate.hidden = true;
   t0 = performance.now(); offset = 0; frameIdx = -1;
   playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  btn.textContent = playing ? 'Pause' : 'Play';
   if (!playing) draw(0);
   playSong();
 });

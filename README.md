@@ -55,7 +55,7 @@ python3 export_web.py
 open web/index.html
 ```
 
-`export_web.py` pre-renders the animation into a single page, `web/index.html` (the public site is the same page built with `--out docs/index.html`): the bloom plays once (18 s), then the bouquet keeps turning in a seamless 15 s loop with the petals falling. The page opens on the closed buds with an **Open your flowers** button, and has Pause and Replay bloom buttons.
+`export_web.py` pre-renders the animation into a single page, `web/index.html` (the public site is the same page built with `--out docs/index.html`): the bloom plays once (18 s), then the bouquet keeps turning in a seamless 15 s loop with the petals falling. The page opens on the closed buds with an **Open your flowers** button; below the flowers there is a single **Replay bloom** button.
 
 ## Deploying
 
@@ -68,11 +68,11 @@ After changing the bouquet, rebuild the page with `python3 export_web.py --out d
 
 ## Music
 
-The web page streams its song through an invisible SoundCloud embedded player, controlled with the [Widget API](https://developers.soundcloud.com/docs/api/html5-widget); nothing is downloaded or rehosted. Only one control shows: **Play our song ♡**.
+The web page streams its song through an invisible SoundCloud embedded player, controlled with the [Widget API](https://developers.soundcloud.com/docs/api/html5-widget); nothing is downloaded or rehosted. There are no music controls on the page.
 
-- Tapping **Open your flowers** starts the bloom and the song together; **Play our song ♡** plays and pauses it. The song starts over when it ends.
+- Tapping **Open your flowers** starts the bloom and the song together. The song starts over when it ends.
 - Phones only allow sound after a tap, which is why the music waits for one.
-- If the player can't load, the song button disappears and the flowers carry on quietly.
+- If the player can't load, the flowers carry on quietly.
 
 The terminal version (`python3 main.py`) can play a local file instead: it plays `web/audio/song.mp3` 1 s after launch (macOS `afplay`), or pass `--music path/to/song.mp3` / `--no-music`. Audio files are never committed.
 
